@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudIdada - Upload Form</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .upload-container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 15px;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .file-input-label:hover {
+            background: #e8f2ff;
+            border-color: #5a67d8;
+        }
+
+        .file-input-label.dragover {
+            background: #e8f2ff;
+            border-color: #5a67d8;
+            transform: scale(1.02);
+        }
+
+        .file-preview {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .preview-image {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .file-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f9ff;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #0369a1;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .result.error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .api-info {
+            background: #f0f9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .api-key {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #0369a1;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <div class="header">
+            <h1>📤 Upload Form</h1>
+            <p>Upload your image with name using CloudIdada</p>
+        </div>
+
+        <div class="api-info">
+            <div>Using API Key: <span class="api-key">cld_demo_j5nrdf</span></div>
+        </div>
+
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="userName">📝 Your Name:</label>
+                <input type="text" id="userName" name="userName" required placeholder="Enter your name">
+            </div>
+
+            <div class="form-group">
+                <label for="fileInput">🖼️ Select Image:</label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="fileInput" name="file" class="file-input" accept="image/*" required>
+                    <label for="fileInput" class="file-input-label">
+                        📁 Click to select image or drag & drop
+                    </label>
+                </div>
+                <div class="file-preview" id="filePreview"></div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+                🚀 Upload Data
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <div>Uploading to CloudIdada...</div>
+        </div>
+
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const fileInputLabel = document.querySelector('.file-input-label');
+        const filePreview = document.getElementById('filePreview');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const API_KEY = 'cld_demo_j5nrdf';
+
+        // File preview functionality
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                showFilePreview(file);
+            }
+        }
+
+        function showFilePreview(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                filePreview.innerHTML = `
+                    <img src="${e.target.result}" class="preview-image" alt="Preview">
+                    <div class="file-info">
+                        📄 ${file.name}<br>
+                        📏 ${(file.size / 1024).toFixed(1)} KB<br>
+                        🎨 ${file.type}
+                    </div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Drag and drop functionality
+        fileInputLabel.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('dragover');
+        });
+
+        fileInputLabel.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+        });
+
+        fileInputLabel.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+
+        // Form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const userName = document.getElementById('userName').value;
+            const file = fileInput.files[0];
+            
+            if (!userName || !file) {
+                showResult('❌ Please fill all fields and select an image!', 'error');
+                return;
+            }
+
+            // Show loading
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Uploading...';
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            try {
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('userName', userName);
+
+                // Upload to CloudIdada
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': API_KEY
+                    },
+                    body: formData
+                });
+
+                const responseData = await response.json();
+
+                if (response.ok && responseData.success) {
+                    showResult(`✅ Upload Successful!
+                    
+📁 File: ${responseData.data.filename}
+👤 User: ${userName}
+🔗 URL: ${responseData.data.secure_url}
+📊 Size: ${(responseData.data.bytes / 1024).toFixed(1)} KB
+🆔 ID: ${responseData.data.public_id}
+
+Data stored with API key: ${API_KEY}`, 'success');
+                    
+                    // Reset form
+                    form.reset();
+                    filePreview.innerHTML = '';
+                    
+                } else {
+                    showResult(`❌ Upload Failed: ${responseData.message || 'Unknown error'}`, 'error');
+                }
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                showResult(`❌ Upload Error: ${error.message}`, 'error');
+            }
+
+            // Hide loading
+            submitBtn.disabled = false;
+            submitBtn.textContent = '🚀 Upload Data';
+            loading.style.display = 'none';
+        });
+
+        function showResult(message, type) {
+            result.textContent = message;
+            result.className = `result ${type}`;
+            result.style.display = 'block';
+            
+            // Auto hide after 10 seconds for success
+            if (type === 'success') {
+                setTimeout(() => {
+                    result.style.display = 'none';
+                }, 10000);
+            }
+        }
+
+        // Test API key on load
+        window.addEventListener('load', async function() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    console.log('✅ CloudIdada server is running');
+                }
+            } catch (error) {
+                showResult('⚠️ Server connection issue. Please ensure CloudIdada server is running.', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudIdada - Multi-User Platform</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+            margin: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .tab-buttons {
+            display: flex;
+            margin-bottom: 30px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #eee;
+        }
+
+        .tab-button {
+            flex: 1;
+            background: #f8f9fa;
+            border: none;
+            padding: 15px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .form-container {
+            display: none;
+        }
+
+        .form-container.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .user-info {
+            display: none;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .user-info.show {
+            display: block;
+        }
+
+        .api-key {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .api-key-value {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #333;
+            word-break: break-all;
+        }
+
+        .status-message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .action-btn {
+            flex: 1;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .action-btn.secondary {
+            background: #6c757d;
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+        }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="header">
+            <h1>☁️ CloudIdada</h1>
+            <p>Multi-User File Storage Platform</p>
+        </div>
+
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="showTab('register')">Register</button>
+            <button class="tab-button" onclick="showTab('login')">Login</button>
+        </div>
+
+        <!-- Registration Form -->
+        <div id="register-form" class="form-container active">
+            <h3 style="margin-bottom: 20px; color: #667eea;">Create New Account</h3>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="reg-name">Full Name</label>
+                    <input type="text" id="reg-name" required placeholder="Enter your full name">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email Address</label>
+                    <input type="email" id="reg-email" required placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required placeholder="Create a password">
+                </div>
+                <button type="submit" class="submit-btn">Create Account</button>
+            </form>
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-form" class="form-container">
+            <h3 style="margin-bottom: 20px; color: #667eea;">Login to Your Account</h3>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="login-email">Email Address</label>
+                    <input type="email" id="login-email" required placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Enter your password">
+                </div>
+                <button type="submit" class="submit-btn">Login</button>
+            </form>
+        </div>
+
+        <!-- User Info Display -->
+        <div id="user-info" class="user-info">
+            <h3 style="color: #667eea; margin-bottom: 15px;">Welcome! 🎉</h3>
+            <div id="user-details"></div>
+            <div class="api-key">
+                <strong>Your Personal API Key:</strong>
+                <div class="api-key-value" id="user-api-key"></div>
+                <small>Use this key for all API requests</small>
+            </div>
+            <div class="action-buttons">
+                <button class="action-btn" onclick="goToUpload()">Upload Files</button>
+                <button class="action-btn secondary" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="status-message"></div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update form containers
+            document.querySelectorAll('.form-container').forEach(form => form.classList.remove('active'));
+            document.getElementById(tabName + '-form').classList.add('active');
+            
+            // Hide user info and status
+            document.getElementById('user-info').classList.remove('show');
+            document.getElementById('status-message').innerHTML = '';
+        }
+
+        function showMessage(message, type = 'success') {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.innerHTML = `<div class="status-message ${type}">${message}</div>`;
+            setTimeout(() => statusDiv.innerHTML = '', 5000);
+        }
+
+        function setLoading(isLoading) {
+            const container = document.querySelector('.main-container');
+            if (isLoading) {
+                container.classList.add('loading');
+            } else {
+                container.classList.remove('loading');
+            }
+        }
+
+        async function handleRegister(event) {
+            event.preventDefault();
+            setLoading(true);
+            
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+
+            try {
+                showMessage('🔄 Creating your account...', 'success');
+                
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': 'cld_demo_hteijt'
+                    },
+                    body: JSON.stringify({ userName: name, email, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showUserInfo(result.data);
+                    showMessage('🎉 Registration successful! Redirecting to your dashboard...', 'success');
+                    localStorage.setItem('cloudidada_user', JSON.stringify(result.data));
+                    console.log('✅ Registration successful:', result.data);
+                    
+                    // Auto redirect to my-files after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '/my-files.html';
+                    }, 2000);
+                } else {
+                    showMessage(`❌ Registration failed: ${result.message}`, 'error');
+                    console.error('❌ Registration error:', result);
+                }
+            } catch (error) {
+                showMessage('❌ Network error. Please check your connection.', 'error');
+                console.error('❌ Registration network error:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            setLoading(true);
+            
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                showMessage('🔄 Logging you in...', 'success');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': 'cld_demo_hteijt'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showUserInfo(result.data);
+                    showMessage('🎉 Login successful! Redirecting to your files...', 'success');
+                    localStorage.setItem('cloudidada_token', result.data.token);
+                    localStorage.setItem('cloudidada_user', JSON.stringify(result.data));
+                    console.log('✅ Login successful:', result.data);
+                    
+                    // Auto redirect to my-files after 1.5 seconds
+                    setTimeout(() => {
+                        window.location.href = '/my-files.html';
+                    }, 1500);
+                } else {
+                    showMessage(`❌ Login failed: ${result.message}`, 'error');
+                    console.error('❌ Login error:', result);
+                }
+            } catch (error) {
+                showMessage('❌ Network error. Please check your connection.', 'error');
+                console.error('❌ Login network error:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function showUserInfo(userData) {
+            const userDetails = document.getElementById('user-details');
+            const apiKeyDiv = document.getElementById('user-api-key');
+            
+            userDetails.innerHTML = `
+                <p><strong>Name:</strong> ${userData.name}</p>
+                <p><strong>Email:</strong> ${userData.email}</p>
+                <p><strong>Plan:</strong> ${userData.plan || 'Free'}</p>
+                <p><strong>Member Since:</strong> ${new Date().toLocaleDateString()}</p>
+            `;
+            
+            apiKeyDiv.textContent = userData.apiKey;
+            document.getElementById('user-info').classList.add('show');
+            
+            // Hide forms
+            document.querySelectorAll('.form-container').forEach(form => form.classList.remove('active'));
+        }
+
+        function goToUpload() {
+            window.location.href = '/my-files.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('cloudidada_token');
+            document.getElementById('user-info').classList.remove('show');
+            document.getElementById('register-form').classList.add('active');
+            document.getElementById('status-message').innerHTML = '';
+            
+            // Update tab
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.tab-button').classList.add('active');
+            
+            // Reset forms
+            document.querySelectorAll('input').forEach(input => input.value = '');
+            
+            showMessage('👋 Logged out successfully!', 'success');
+            console.log('✅ User logged out');
+        }
+
+        // Auto-login if token exists
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('cloudidada_token');
+            if (token) {
+                showMessage('🔄 Checking saved login...', 'success');
+                console.log('🔍 Found saved token, checking validity...');
+            }
+            
+            console.log('🚀 CloudIdada Multi-User Platform initialized');
+            console.log('🔑 Using API Key: cld_demo_hteijt');
+            console.log('📡 Server: http://localhost:3000');
+        });
+
+        // Suppress WTM warnings
+        window.addEventListener('error', function(e) {
+            if (e.message && e.message.includes('WTM Reporting')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    </script>
+</body>
+</html>
