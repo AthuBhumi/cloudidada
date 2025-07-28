@@ -24,7 +24,11 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || ["http://localhost:3000"],
+        origin: process.env.CORS_ORIGIN?.split(',') || [
+            "http://localhost:3000", 
+            "https://cloudidada121.vercel.app",
+            "https://*.vercel.app"
+        ],
         methods: ["GET", "POST", "PUT", "DELETE"]
     }
 });
@@ -50,7 +54,11 @@ app.use(helmet({
     },
 }));
 app.use(cors({
-    origin: process.env.CORS_ORIGIN?.split(',') || ["http://localhost:3000"],
+    origin: process.env.CORS_ORIGIN?.split(',') || [
+        "http://localhost:3000", 
+        "https://cloudidada121.vercel.app",
+        "https://*.vercel.app"
+    ],
     credentials: true
 }));
 
@@ -103,15 +111,16 @@ try {
 // Cloudinary configuration
 try {
     cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-        api_key: process.env.CLOUDINARY_API_KEY,
-        api_secret: process.env.CLOUDINARY_API_SECRET
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'cloudybaba',
+        api_key: process.env.CLOUDINARY_API_KEY || '482966548833695',
+        api_secret: process.env.CLOUDINARY_API_SECRET || 'gCsbP2_61aNPORLfXsT45Jv5uv8'
     });
     console.log('✅ Cloudinary configured successfully');
     console.log('☁️ Cloudinary connected');
 } catch (error) {
     console.error('❌ Cloudinary configuration failed:', error.message);
-    process.exit(1); // Exit if Cloudinary not available for direct upload mode
+    console.log('⚠️ Using fallback configuration');
+    // Don't exit, continue with memory storage
 }
 
 // Memory storage fallback
