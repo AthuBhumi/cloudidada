@@ -95,8 +95,8 @@ try {
     };
 
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: process.env.FIREBASE_DATABASE_URL
+        credential: admin.credential.cert(serviceAccount)
+        // Note: databaseURL is not needed for Firestore, only for Realtime Database
     });
 
     db = admin.firestore();
@@ -105,7 +105,10 @@ try {
     console.log('🔥 Firebase Firestore connected');
 } catch (error) {
     console.error('❌ Firebase initialization failed:', error.message);
-    console.log('⚠️ Using memory storage fallback');
+    console.log('⚠️ Using memory storage fallback - this is normal for development');
+    // Set db to null to ensure memory storage is used
+    db = null;
+    firebase = null;
 }
 
 // Cloudinary configuration
@@ -388,6 +391,40 @@ const setupCustomApiKey = async () => {
 };
 
 // Routes
+
+// Database initialization endpoint
+app.get('/api/init-db', async (req, res) => {
+    try {
+        if (!db) {
+            return res.json({
+                success: false,
+                message: 'Firebase not connected, using memory storage'
+            });
+        }
+
+        // Try to create/verify collections exist
+        await db.collection('users').doc('test').set({ test: true });
+        await db.collection('files').doc('test').set({ test: true });
+        await db.collection('activities').doc('test').set({ test: true });
+        
+        // Clean up test documents
+        await db.collection('users').doc('test').delete();
+        await db.collection('files').doc('test').delete();
+        await db.collection('activities').doc('test').delete();
+
+        res.json({
+            success: true,
+            message: 'Database collections initialized successfully'
+        });
+    } catch (error) {
+        console.error('Database initialization error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Database initialization failed',
+            error: error.message
+        });
+    }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -737,21 +774,35 @@ app.get('/api/files/list', verifyApiKey, async (req, res) => {
                 query = query.where('folder', '==', folder);
             }
             
-            const snapshot = await query.orderBy('uploadedAt', 'desc').get();
+            // Try with ordering first, fallback without ordering if index doesn't exist
+            let snapshot;
+            try {
+                snapshot = await query.orderBy('uploadedAt', 'desc').get();
+            } catch (orderError) {
+                console.log('⚠️ Index for uploadedAt not found, fetching without ordering');
+                snapshot = await query.get();
+            }
+            
             userFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
+            // Sort manually if we couldn't order in query
+            if (userFiles.length > 0 && userFiles[0].uploadedAt) {
+                userFiles.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+            }
+            
             if (format) {
-                userFiles = userFiles.filter(file => file.mimetype.includes(format));
+                userFiles = userFiles.filter(file => file.mimetype && file.mimetype.includes(format));
             }
             
         } catch (error) {
             console.error('Error fetching files from Firebase:', error);
+            console.log('⚠️ Using memory storage fallback');
             
             // Fallback to memory storage
             for (const [fileId, fileData] of memoryStorage.files) {
                 if (fileData.userId === req.user.userId) {
                     if (!folder || folder === 'all' || fileData.folder === folder) {
-                        if (!format || fileData.mimetype.includes(format)) {
+                        if (!format || (fileData.mimetype && fileData.mimetype.includes(format))) {
                             userFiles.push({ id: fileId, ...fileData });
                         }
                     }
