@@ -405,10 +405,13 @@ app.get('/api/health', (req, res) => {
 
 // User registration
 app.post('/api/auth/register', async (req, res) => {
+    console.log('📝 Registration attempt:', req.body);
+    
     try {
         const { email, password, userName } = req.body;
 
         if (!email || !password || !userName) {
+            console.log('❌ Missing fields:', { email: !!email, password: !!password, userName: !!userName });
             return res.status(400).json({
                 error: 'Missing required fields',
                 message: 'Email, password, and userName are required'
@@ -417,6 +420,8 @@ app.post('/api/auth/register', async (req, res) => {
 
         const userId = `user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const apiKey = `cld_${Math.random().toString(36).substring(2, 15)}`;
+        
+        console.log('🔐 Hashing password...');
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const userData = {
@@ -430,6 +435,7 @@ app.post('/api/auth/register', async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
+        console.log('💾 Storing user data...');
         memoryStorage.users.set(userId, userData);
         memoryStorage.apiKeys.set(apiKey, userData);
 
@@ -448,6 +454,7 @@ app.post('/api/auth/register', async (req, res) => {
             apiKey
         });
 
+        console.log('✅ Registration successful for:', userName);
         res.status(201).json({
             success: true,
             message: 'User registered successfully',
@@ -465,7 +472,7 @@ app.post('/api/auth/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('❌ Registration error:', error);
         res.status(500).json({
             error: 'Registration failed',
             message: error.message
@@ -898,6 +905,32 @@ const startServer = async () => {
 ==========================================`);
     });
 };
+
+// Global error handler
+app.use((error, req, res, next) => {
+    console.error('Global error handler:', error);
+    
+    // Check if response is already sent
+    if (res.headersSent) {
+        return next(error);
+    }
+    
+    // Send JSON error response
+    res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+    res.status(404).json({
+        error: 'API endpoint not found',
+        message: `The endpoint ${req.originalUrl} does not exist`,
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
