@@ -883,8 +883,10 @@ const startServer = async () => {
     const defaultApiKey = await setupDefaultApiKey();
     const customApiKey = await setupCustomApiKey();
     
-    server.listen(PORT, () => {
-        console.log(`
+    // Only start server if not in Vercel environment
+    if (!process.env.VERCEL) {
+        server.listen(PORT, () => {
+            console.log(`
 🎉 CloudIdada Production Server Started!
 ==========================================
 📊 Dashboard: http://localhost:${PORT}
@@ -903,7 +905,12 @@ const startServer = async () => {
    Data → Firebase Firestore
    Updates → Real-time WebSocket
 ==========================================`);
-    });
+        });
+    } else {
+        console.log('🌐 Running in Vercel serverless environment');
+        await setupDefaultApiKey();
+        await setupCustomApiKey();
+    }
 };
 
 // Global error handler
@@ -947,7 +954,19 @@ process.on('SIGINT', () => {
     });
 });
 
-startServer().catch(error => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-});
+// Initialize for both local and Vercel environments
+if (process.env.VERCEL) {
+    // For Vercel, just initialize without starting server
+    console.log('🌐 Initializing for Vercel...');
+    setupDefaultApiKey().catch(console.error);
+    setupCustomApiKey().catch(console.error);
+} else {
+    // For local development, start the server
+    startServer().catch(error => {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    });
+}
+
+// Export for Vercel serverless functions
+module.exports = app;
