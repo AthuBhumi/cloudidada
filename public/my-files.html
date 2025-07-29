@@ -375,7 +375,7 @@
         }
         
         const API_KEY = getApiKey();
-        const SERVER_URL = 'http://localhost:3000';
+        const SERVER_URL = window.location.origin; // Auto-detect domain
         
         console.log('🔑 Using API Key:', API_KEY);
 
@@ -442,6 +442,7 @@
         }
 
         function displayFiles(files) {
+            console.log('📁 Files received:', files);
             const container = document.getElementById('filesContainer');
             
             if (!files || files.length === 0) {
@@ -450,7 +451,9 @@
             }
 
             const filesHTML = files.map(file => {
+                console.log('🔍 Processing file:', file);
                 const isImage = file.mimetype?.startsWith('image/');
+                console.log('🖼️ Is image:', isImage, 'Mimetype:', file.mimetype, 'URL:', file.url);
                 const fileSize = file.size ? formatFileSize(file.size) : 'Unknown';
                 const uploadDate = file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : new Date().toLocaleDateString();
                 
@@ -458,7 +461,9 @@
                     <div class="file-card">
                         <div class="file-preview">
                             ${isImage ? 
-                                `<img src="${file.url}" alt="${file.originalName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                `<img src="${file.url}" alt="${file.originalName}" 
+                                      onload="console.log('✅ Image loaded:', '${file.url}')" 
+                                      onerror="console.error('❌ Image failed to load:', '${file.url}'); this.style.display='none'; this.nextElementSibling.style.display='block';">
                                  <div class="file-icon" style="display:none;">🖼️</div>` :
                                 `<div class="file-icon">📄</div>`
                             }

@@ -45,8 +45,8 @@ app.use(helmet({
             scriptSrcAttr: ["'unsafe-inline'", "'unsafe-hashes'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-            imgSrc: ["'self'", "data:", "https:", "blob:"],
-            connectSrc: ["'self'", "ws:", "wss:", "https://api.cloudinary.com"],
+            imgSrc: ["'self'", "data:", "https:", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com"],
+            connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001", "ws:", "wss:", "https://api.cloudinary.com"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", "https:", "blob:"],
             frameSrc: ["'none'"]
@@ -56,6 +56,7 @@ app.use(helmet({
 app.use(cors({
     origin: process.env.CORS_ORIGIN?.split(',') || [
         "http://localhost:3000", 
+        "http://localhost:3001",
         "https://cloudidada121.vercel.app",
         "https://*.vercel.app"
     ],
