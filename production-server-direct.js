@@ -13,25 +13,36 @@ const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
 
 // Load environment variables
 dotenv.config();
 
 // Initialize Express app  
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || [
-            "http://localhost:3000", 
-            "https://cloudidada121.vercel.app",
-            "https://*.vercel.app"
-        ],
-        methods: ["GET", "POST", "PUT", "DELETE"]
-    }
-});
+
+// Only create server and socket.io for local development
+let server, io;
+if (!process.env.VERCEL) {
+    const { createServer } = require('http');
+    const { Server } = require('socket.io');
+    
+    server = createServer(app);
+    io = new Server(server, {
+        cors: {
+            origin: process.env.CORS_ORIGIN?.split(',') || [
+                "http://localhost:3000", 
+                "https://cloudidada121.vercel.app",
+                "https://*.vercel.app"
+            ],
+            methods: ["GET", "POST", "PUT", "DELETE"]
+        }
+    });
+} else {
+    // Mock socket.io for serverless
+    io = {
+        emit: () => {} // No-op for serverless
+    };
+}
 
 // Port configuration
 const PORT = process.env.PORT || 3000;
@@ -90,6 +101,20 @@ try {
     } catch (noAppError) {
         // App doesn't exist, create new one
         admin = require('firebase-admin');
+        
+        // Validate required environment variables
+        const requiredEnvVars = [
+            'FIREBASE_PROJECT_ID',
+            'FIREBASE_PRIVATE_KEY',
+            'FIREBASE_CLIENT_EMAIL'
+        ];
+        
+        const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+        
+        if (missingVars.length > 0) {
+            throw new Error(`Missing required Firebase environment variables: ${missingVars.join(', ')}`);
+        }
+        
         const serviceAccount = {
             type: "service_account",
             project_id: process.env.FIREBASE_PROJECT_ID,
@@ -115,6 +140,10 @@ try {
 } catch (error) {
     console.error('❌ Firebase initialization failed:', error.message);
     console.log('⚠️ Using memory storage fallback - this is normal for development');
+    console.log('💡 To use Firebase, ensure all required environment variables are set:');
+    console.log('   - FIREBASE_PROJECT_ID');
+    console.log('   - FIREBASE_PRIVATE_KEY');
+    console.log('   - FIREBASE_CLIENT_EMAIL');
     // Set db to null to ensure memory storage is used
     db = null;
     firebase = null;
@@ -273,16 +302,21 @@ const verifyApiKey = async (req, res, next) => {
         // Check Firebase if available
         if (db) {
             try {
+                console.log('🔍 Checking API key in Firebase...');
                 const snapshot = await db.collection('users').where('apiKey', '==', apiKey).get();
                 if (!snapshot.empty) {
                     const userData = snapshot.docs[0].data();
                     req.user = userData;
                     // Cache in memory for faster access
                     memoryStorage.apiKeys.set(apiKey, userData);
+                    console.log('✅ API key found in Firebase');
                     return next();
                 }
             } catch (error) {
-                console.error('Error fetching API key from Firebase:', error);
+                console.error('❌ Firebase API key lookup failed:', error.message);
+                console.log('⚠️ Disabling Firebase for this session due to connection issues');
+                // Disable Firebase for this session
+                db = null;
             }
         }
 
@@ -475,7 +509,18 @@ app.get('/api/health', (req, res) => {
         services: {
             firebase: !!firebase,
             cloudinary: !!cloudinary,
-            realtime: true
+            realtime: !process.env.VERCEL // Only true for local development
+        },
+        environment: process.env.VERCEL ? 'serverless' : 'development',
+        storage: {
+            firebase: !!db,
+            memory: true,
+            cloudinary: true
+        },
+        memoryStats: {
+            users: memoryStorage.users.size,
+            files: memoryStorage.files.size,
+            apiKeys: memoryStorage.apiKeys.size
         }
     });
 });
@@ -809,9 +854,23 @@ app.get('/api/files/list', verifyApiKey, async (req, res) => {
     const { page = 1, limit = 20, folder, format } = req.query;
     
     let userFiles = [];
+    let usingFirebase = false;
 
-    if (db) {
+    // Always try memory storage first for better performance
+    for (const [fileId, fileData] of memoryStorage.files) {
+        if (fileData.userId === req.user.userId) {
+            if (!folder || folder === 'all' || fileData.folder === folder) {
+                if (!format || (fileData.mimetype && fileData.mimetype.includes(format))) {
+                    userFiles.push({ id: fileId, ...fileData });
+                }
+            }
+        }
+    }
+
+    // If no files in memory and Firebase is available, try Firebase
+    if (userFiles.length === 0 && db) {
         try {
+            console.log('📁 Attempting to fetch files from Firebase...');
             let query = db.collection('files').where('userId', '==', req.user.userId);
             
             if (folder && folder !== 'all') {
@@ -827,7 +886,15 @@ app.get('/api/files/list', verifyApiKey, async (req, res) => {
                 snapshot = await query.get();
             }
             
-            userFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const firebaseFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Cache Firebase files in memory for faster access
+            firebaseFiles.forEach(file => {
+                memoryStorage.files.set(file.id, file);
+            });
+            
+            userFiles = firebaseFiles;
+            usingFirebase = true;
             
             // Sort manually if we couldn't order in query
             if (userFiles.length > 0 && userFiles[0].uploadedAt) {
@@ -838,30 +905,15 @@ app.get('/api/files/list', verifyApiKey, async (req, res) => {
                 userFiles = userFiles.filter(file => file.mimetype && file.mimetype.includes(format));
             }
             
-        } catch (error) {
-            console.error('Error fetching files from Firebase:', error);
-            console.log('⚠️ Using memory storage fallback');
+            console.log(`✅ Fetched ${userFiles.length} files from Firebase`);
             
-            // Fallback to memory storage
-            for (const [fileId, fileData] of memoryStorage.files) {
-                if (fileData.userId === req.user.userId) {
-                    if (!folder || folder === 'all' || fileData.folder === folder) {
-                        if (!format || (fileData.mimetype && fileData.mimetype.includes(format))) {
-                            userFiles.push({ id: fileId, ...fileData });
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        for (const [fileId, fileData] of memoryStorage.files) {
-            if (fileData.userId === req.user.userId) {
-                if (!folder || folder === 'all' || fileData.folder === folder) {
-                    if (!format || fileData.mimetype.includes(format)) {
-                        userFiles.push({ id: fileId, ...fileData });
-                    }
-                }
-            }
+        } catch (error) {
+            console.error('❌ Firebase query failed:', error.message);
+            console.log('⚠️ Firebase database may not exist or credentials are invalid');
+            console.log('🔄 Continuing with memory storage only');
+            
+            // Set db to null to avoid future Firebase attempts
+            db = null;
         }
     }
 
@@ -878,6 +930,11 @@ app.get('/api/files/list', verifyApiKey, async (req, res) => {
                 limit: parseInt(limit),
                 total,
                 pages: Math.ceil(total / limit)
+            },
+            meta: {
+                source: usingFirebase ? 'firebase' : 'memory',
+                firebaseConnected: !!db,
+                totalFilesInMemory: memoryStorage.files.size
             }
         }
     });
@@ -936,14 +993,16 @@ app.get('/api/stats', verifyApiKey, async (req, res) => {
     }
 });
 
-// WebSocket connection handling
-io.on('connection', (socket) => {
-    console.log('📱 Client connected for real-time updates');
-    
-    socket.on('disconnect', () => {
-        console.log('📱 Client disconnected');
+// WebSocket connection handling (only for local development)
+if (!process.env.VERCEL && io && io.on) {
+    io.on('connection', (socket) => {
+        console.log('📱 Client connected for real-time updates');
+        
+        socket.on('disconnect', () => {
+            console.log('📱 Client disconnected');
+        });
     });
-});
+}
 
 // Error handling middleware
 app.use((error, req, res, next) => {
@@ -978,8 +1037,8 @@ const startServer = async () => {
     const defaultApiKey = await setupDefaultApiKey();
     const customApiKey = await setupCustomApiKey();
     
-    // Only start server if not in Vercel environment
-    if (!process.env.VERCEL) {
+    // Only start server if not in Vercel environment and server exists
+    if (!process.env.VERCEL && server) {
         server.listen(PORT, () => {
             console.log(`
 🎉 CloudIdada Production Server Started!
@@ -1034,20 +1093,22 @@ app.use('/api/*', (req, res) => {
     });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down gracefully');
-    server.close(() => {
-        console.log('Process terminated');
+// Graceful shutdown (only for local development)
+if (!process.env.VERCEL && server) {
+    process.on('SIGTERM', () => {
+        console.log('Received SIGTERM, shutting down gracefully');
+        server.close(() => {
+            console.log('Process terminated');
+        });
     });
-});
 
-process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down gracefully');
-    server.close(() => {
-        console.log('Process terminated');
+    process.on('SIGINT', () => {
+        console.log('Received SIGINT, shutting down gracefully');
+        server.close(() => {
+            console.log('Process terminated');
+        });
     });
-});
+}
 
 // Initialize for both local and Vercel environments
 if (process.env.VERCEL) {
