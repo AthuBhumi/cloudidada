@@ -81,28 +81,36 @@ app.use('/uploads', express.static('uploads'));
 // Firebase Admin SDK initialization
 let admin, db, firebase;
 try {
-    admin = require('firebase-admin');
-    const serviceAccount = {
-        type: "service_account",
-        project_id: process.env.FIREBASE_PROJECT_ID,
-        private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-        private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        client_email: process.env.FIREBASE_CLIENT_EMAIL,
-        client_id: process.env.FIREBASE_CLIENT_ID,
-        auth_uri: "https://accounts.google.com/o/oauth2/auth",
-        token_uri: "https://oauth2.googleapis.com/token",
-        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-        client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
-    };
+    // Check if Firebase app already exists
+    try {
+        admin = require('firebase-admin');
+        firebase = admin.app(); // Try to get existing app
+        db = firebase.firestore();
+        console.log('✅ Firebase Admin app already initialized');
+    } catch (noAppError) {
+        // App doesn't exist, create new one
+        admin = require('firebase-admin');
+        const serviceAccount = {
+            type: "service_account",
+            project_id: process.env.FIREBASE_PROJECT_ID,
+            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+            private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            client_email: process.env.FIREBASE_CLIENT_EMAIL,
+            client_id: process.env.FIREBASE_CLIENT_ID,
+            auth_uri: "https://accounts.google.com/o/oauth2/auth",
+            token_uri: "https://oauth2.googleapis.com/token",
+            auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+            client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
+        };
 
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-        // Note: databaseURL is not needed for Firestore, only for Realtime Database
-    });
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
 
-    db = admin.firestore();
-    firebase = admin;
-    console.log('✅ Firebase Admin initialized successfully');
+        db = admin.firestore();
+        firebase = admin;
+        console.log('✅ Firebase Admin initialized successfully');
+    }
     console.log('🔥 Firebase Firestore connected');
 } catch (error) {
     console.error('❌ Firebase initialization failed:', error.message);
@@ -135,9 +143,11 @@ const memoryStorage = {
     apiKeys: new Map()
 };
 
-// Multer configuration for file uploads
+// Multer configuration for file uploads - Serverless compatible
 const upload = multer({
-    dest: 'uploads/temp/',
+    storage: process.env.VERCEL ? multer.memoryStorage() : multer.diskStorage({
+        destination: 'uploads/temp/'
+    }),
     limits: {
         fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760, // 10MB
         files: 1
@@ -156,15 +166,36 @@ const upload = multer({
     }
 });
 
-// Cloudinary upload helper with fallback
-const uploadToCloudinary = async (filePath, options = {}) => {
+// Cloudinary upload helper with fallback - Serverless compatible
+const uploadToCloudinary = async (fileInput, options = {}) => {
     try {
-        const result = await cloudinary.uploader.upload(filePath, {
-            folder: options.folder || 'cloudidada',
-            tags: options.tags || [],
-            resource_type: options.resource_type || 'auto',
-            transformation: options.transformation || []
-        });
+        let result;
+        
+        if (process.env.VERCEL && Buffer.isBuffer(fileInput)) {
+            // Serverless: Upload from buffer
+            result = await new Promise((resolve, reject) => {
+                cloudinary.uploader.upload_stream(
+                    {
+                        folder: options.folder || 'cloudidada',
+                        tags: options.tags || [],
+                        resource_type: options.resource_type || 'auto',
+                        transformation: options.transformation || []
+                    },
+                    (error, result) => {
+                        if (error) reject(error);
+                        else resolve(result);
+                    }
+                ).end(fileInput);
+            });
+        } else {
+            // Local development: Upload from file path
+            result = await cloudinary.uploader.upload(fileInput, {
+                folder: options.folder || 'cloudidada',
+                tags: options.tags || [],
+                resource_type: options.resource_type || 'auto',
+                transformation: options.transformation || []
+            });
+        }
         
         return {
             success: true,
@@ -173,7 +204,15 @@ const uploadToCloudinary = async (filePath, options = {}) => {
     } catch (error) {
         console.error('❌ Cloudinary upload error:', error.message);
         
-        // Fallback: Create local file storage
+        // For serverless, we can't use local fallback
+        if (process.env.VERCEL) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+        
+        // Fallback: Create local file storage (local development only)
         console.log('📁 Creating local file storage...');
         
         const fs = require('fs');
@@ -186,20 +225,20 @@ const uploadToCloudinary = async (filePath, options = {}) => {
         
         // Create unique filename
         const fileName = `local_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        const fileExtension = path.extname(filePath);
+        const fileExtension = path.extname(fileInput);
         const newFileName = fileName + fileExtension;
         const newFilePath = `uploads/${newFileName}`;
         
         // Copy file to uploads directory
-        fs.copyFileSync(filePath, newFilePath);
+        fs.copyFileSync(fileInput, newFilePath);
         
         const mockResult = {
             public_id: `local/${newFileName}`,
             url: `http://localhost:3000/uploads/${newFileName}`,
             secure_url: `http://localhost:3000/uploads/${newFileName}`,
-            format: path.extname(filePath).substring(1),
+            format: path.extname(fileInput).substring(1),
             resource_type: 'image',
-            bytes: fs.statSync(filePath).size,
+            bytes: fs.statSync(fileInput).size,
             width: 800,
             height: 600,
             created_at: new Date().toISOString()
@@ -623,11 +662,15 @@ app.post('/api/files/upload', verifyApiKey, upload.single('file'), async (req, r
             });
         }
 
-        tempFilePath = req.file.path;
         const fileId = `file_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
         console.log('☁️ Uploading directly to Cloudinary...');
-        const cloudinaryResult = await uploadToCloudinary(tempFilePath, {
+        
+        // Handle serverless (buffer) vs local (file path)
+        const fileInput = process.env.VERCEL ? req.file.buffer : req.file.path;
+        tempFilePath = process.env.VERCEL ? null : req.file.path;
+        
+        const cloudinaryResult = await uploadToCloudinary(fileInput, {
             folder: req.body.folder || 'cloudidada',
             tags: req.body.tags ? req.body.tags.split(',') : [],
             resource_type: 'auto'
@@ -749,8 +792,8 @@ app.post('/api/files/upload', verifyApiKey, upload.single('file'), async (req, r
             details: 'Direct Cloudinary upload failed'
         });
     } finally {
-        // Clean up temporary file
-        if (tempFilePath) {
+        // Clean up temporary file (only for local development)
+        if (tempFilePath && !process.env.VERCEL) {
             try {
                 await fs.unlink(tempFilePath);
                 console.log('🗑️ Temporary file cleaned up');
