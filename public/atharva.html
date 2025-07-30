@@ -209,7 +209,31 @@
 
     <script>
         // API Configuration - Put your API key here
-        const API_KEY = 'cld_aepzf6x5h1';
+        // const API_KEY = 'cld_m6iniydks';
+         function getApiKey() {
+            // First try to get from URL params
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlApiKey = urlParams.get('apiKey');
+            if (urlApiKey) {
+                return urlApiKey;
+            }
+            
+            // Then try localStorage (from login)
+            const userData = localStorage.getItem('cloudidada_user');
+            if (userData) {
+                try {
+                    const parsed = JSON.parse(userData);
+                    return parsed.apiKey;
+                } catch (e) {
+                    console.warn('Could not parse user data from localStorage');
+                }
+            }
+            
+            // Fallback to default (for testing)
+            return 'cld_tniz87jemf';
+        }
+        
+        const API_KEY = getApiKey();
         const SERVER_URL = window.location.origin; // Auto-detect domain
 
         const form = document.getElementById('uploadForm');
