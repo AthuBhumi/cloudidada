@@ -17,6 +17,7 @@ const bcrypt = require('bcrypt');
 // Load environment variables
 dotenv.config();
 
+console.log(process.env);
 // Initialize Express app  
 const app = express();
 
@@ -31,7 +32,11 @@ if (!process.env.VERCEL) {
         cors: {
             origin: process.env.CORS_ORIGIN?.split(',') || [
                 "http://localhost:3000", 
+                "http://localhost:3001",
+                "http://127.0.0.1:5500",
+                "http://localhost:5500",
                 "https://cloudidada121.vercel.app",
+                "https://cloudidada.vercel.app",
                 "https://*.vercel.app"
             ],
             methods: ["GET", "POST", "PUT", "DELETE"]
@@ -57,7 +62,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https:", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com"],
-            connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001", "ws:", "wss:", "https://api.cloudinary.com"],
+            connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:5500", "http://localhost:5500", "ws:", "wss:", "https://api.cloudinary.com"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", "https:", "blob:"],
             frameSrc: ["'none'"]
@@ -68,10 +73,15 @@ app.use(cors({
     origin: process.env.CORS_ORIGIN?.split(',') || [
         "http://localhost:3000", 
         "http://localhost:3001",
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
         "https://cloudidada121.vercel.app",
+        "https://cloudidada.vercel.app",
         "https://*.vercel.app"
     ],
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
 }));
 
 // Rate limiting
@@ -91,77 +101,126 @@ app.use('/uploads', express.static('uploads'));
 
 // Firebase Admin SDK initialization
 let admin, db, firebase;
-try {
-    // Check if Firebase app already exists
-    try {
-        admin = require('firebase-admin');
-        firebase = admin.app(); // Try to get existing app
-        db = firebase.firestore();
-        console.log('✅ Firebase Admin app already initialized');
-    } catch (noAppError) {
-        // App doesn't exist, create new one
-        admin = require('firebase-admin');
-        
-        // Validate required environment variables
-        const requiredEnvVars = [
-            'FIREBASE_PROJECT_ID',
-            'FIREBASE_PRIVATE_KEY',
-            'FIREBASE_CLIENT_EMAIL'
-        ];
-        
-        const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-        
-        if (missingVars.length > 0) {
-            throw new Error(`Missing required Firebase environment variables: ${missingVars.join(', ')}`);
+
+// Initialize Firebase asynchronously
+const initializeFirebase = async () => {
+    // Check if Firebase environment variables are available
+    const hasFirebaseConfig = process.env.FIREBASE_PROJECT_ID && 
+                              process.env.FIREBASE_PRIVATE_KEY && 
+                              process.env.FIREBASE_CLIENT_EMAIL;
+
+    console.log('🔍 Firebase environment check:', {
+        hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+        hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
+        hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+        projectId: process.env.FIREBASE_PROJECT_ID
+    });
+
+    if (hasFirebaseConfig) {
+        try {
+            // Check if Firebase app already exists
+            try {
+                admin = require('firebase-admin');
+                firebase = admin.app(); // Try to get existing app
+                db = firebase.firestore();
+                console.log('✅ Firebase Admin app already initialized');
+            } catch (noAppError) {
+                // App doesn't exist, create new one
+                admin = require('firebase-admin');
+                
+                console.log('🔧 Creating new Firebase Admin app...');
+                const serviceAccount = {
+                    type: "service_account",
+                    project_id: process.env.FIREBASE_PROJECT_ID,
+                    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+                    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+                    client_email: process.env.FIREBASE_CLIENT_EMAIL,
+                    client_id: process.env.FIREBASE_CLIENT_ID,
+                    auth_uri: "https://accounts.google.com/o/oauth2/auth",
+                    token_uri: "https://oauth2.googleapis.com/token",
+                    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+                    client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
+                };
+
+                admin.initializeApp({
+                    credential: admin.credential.cert(serviceAccount)
+                });
+
+                db = admin.firestore();
+                firebase = admin;
+                console.log('✅ Firebase Admin initialized successfully');
+            }
+            
+            // Test Firebase connection with more specific error handling
+            console.log('🧪 Testing Firebase connection...');
+            await db.collection('test').limit(1).get();
+            console.log('🔥 Firebase Firestore connected and accessible');
+            
+        } catch (error) {
+            console.error('❌ Firebase connection test failed:', error.message);
+            console.error('🔍 Error code:', error.code);
+            console.error('🔍 Error details:', error.details);
+            
+            if (error.code === 5) {
+                console.log('💡 Error code 5 means NOT_FOUND - possible causes:');
+                console.log('   1. Firebase project does not exist');
+                console.log('   2. Firestore database is not enabled for this project');
+                console.log('   3. Service account doesn\'t have proper permissions');
+                console.log('   4. Project ID in .env doesn\'t match actual Firebase project');
+            }
+            
+            console.log('⚠️ Disabling Firebase due to connection issues');
+            console.log('🔄 Application will use memory storage as fallback');
+            db = null;
+            firebase = null;
         }
-        
-        const serviceAccount = {
-            type: "service_account",
-            project_id: process.env.FIREBASE_PROJECT_ID,
-            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-            private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-            client_email: process.env.FIREBASE_CLIENT_EMAIL,
-            client_id: process.env.FIREBASE_CLIENT_ID,
-            auth_uri: "https://accounts.google.com/o/oauth2/auth",
-            token_uri: "https://oauth2.googleapis.com/token",
-            auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-            client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
-        };
-
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-
-        db = admin.firestore();
-        firebase = admin;
-        console.log('✅ Firebase Admin initialized successfully');
+    } else {
+        console.log('⚠️ Firebase environment variables not configured');
+        console.log('💡 To use Firebase, set these environment variables:');
+        console.log('   - FIREBASE_PROJECT_ID');
+        console.log('   - FIREBASE_PRIVATE_KEY');
+        console.log('   - FIREBASE_CLIENT_EMAIL');
+        console.log('🔄 Using memory storage only');
+        db = null;
+        firebase = null;
     }
-    console.log('🔥 Firebase Firestore connected');
-} catch (error) {
-    console.error('❌ Firebase initialization failed:', error.message);
-    console.log('⚠️ Using memory storage fallback - this is normal for development');
-    console.log('💡 To use Firebase, ensure all required environment variables are set:');
-    console.log('   - FIREBASE_PROJECT_ID');
-    console.log('   - FIREBASE_PRIVATE_KEY');
-    console.log('   - FIREBASE_CLIENT_EMAIL');
-    // Set db to null to ensure memory storage is used
+};
+
+// Initialize Firebase without blocking server startup
+initializeFirebase().catch(error => {
+    console.error('Firebase initialization failed:', error.message);
     db = null;
     firebase = null;
-}
+});
 
 // Cloudinary configuration
 try {
+    // Check if we have environment variables for Cloudinary
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    
+    if (!cloudName || !apiKey || !apiSecret) {
+        console.log('⚠️ Cloudinary environment variables not found');
+        console.log('💡 Please set the following environment variables:');
+        console.log('   - CLOUDINARY_CLOUD_NAME');
+        console.log('   - CLOUDINARY_API_KEY');
+        console.log('   - CLOUDINARY_API_SECRET');
+        throw new Error('Missing Cloudinary environment variables');
+    }
+    
     cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'cloudybaba',
-        api_key: process.env.CLOUDINARY_API_KEY || '482966548833695',
-        api_secret: process.env.CLOUDINARY_API_SECRET || 'gCsbP2_61aNPORLfXsT45Jv5uv8'
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret
     });
-    console.log('✅ Cloudinary configured successfully');
-    console.log('☁️ Cloudinary connected');
+    
+    console.log('✅ Cloudinary configured successfully with environment variables');
+    console.log(`☁️ Cloud Name: ${cloudName}`);
 } catch (error) {
     console.error('❌ Cloudinary configuration failed:', error.message);
-    console.log('⚠️ Using fallback configuration');
-    // Don't exit, continue with memory storage
+    console.log('⚠️ Cloudinary uploads will fail without proper configuration');
+    console.log('🔧 Please configure Cloudinary environment variables in Vercel dashboard');
 }
 
 // Memory storage fallback
@@ -377,15 +436,23 @@ const addActivity = async (action, data) => {
         timestamp: new Date().toISOString()
     };
 
+    // Always store in memory first
+    memoryStorage.activities.set(activity.id, activity);
+
+    // Try Firebase only if available and connected
     if (db) {
         try {
             await db.collection('activities').add(activity);
+            console.log('📊 Activity logged to Firebase');
         } catch (error) {
-            console.error('Error saving activity to Firebase:', error);
-            memoryStorage.activities.set(activity.id, activity);
+            console.error('⚠️ Firebase activity logging failed, using memory only:', error.message);
+            // Disable Firebase if it's consistently failing
+            if (error.code === 5) {
+                console.log('🔴 Disabling Firebase due to NOT_FOUND errors');
+                db = null;
+                firebase = null;
+            }
         }
-    } else {
-        memoryStorage.activities.set(activity.id, activity);
     }
 };
 
@@ -449,10 +516,26 @@ const setupCustomApiKey = async () => {
     memoryStorage.users.set('atharva_user_001', atharvaUser);
     memoryStorage.apiKeys.set(atharvaApiKey, atharvaUser);
 
+    // Add new API key from atharva.html
+    const newApiKey = 'cld_s7egj0b0er8';
+    const newUser = {
+        userId: 'new_user_001',
+        userName: 'New Upload User',
+        email: 'newuser@cloudidada.com',
+        apiKey: newApiKey,
+        plan: 'free',
+        usage: { storage: 0, requests: 0 },
+        createdAt: new Date().toISOString()
+    };
+
+    memoryStorage.users.set('new_user_001', newUser);
+    memoryStorage.apiKeys.set(newApiKey, newUser);
+
     if (db) {
         try {
             await db.collection('users').doc('custom_user_001').set(customUser);
             await db.collection('users').doc('atharva_user_001').set(atharvaUser);
+            await db.collection('users').doc('new_user_001').set(newUser);
             console.log('👤 Custom users stored in Firebase');
         } catch (error) {
             console.error('⚠️ Firebase save failed (using memory fallback):', error.message);
@@ -461,6 +544,7 @@ const setupCustomApiKey = async () => {
 
     console.log(`🔑 Custom API key ${customApiKey} stored in memory storage`);
     console.log(`🔑 Atharva API key ${atharvaApiKey} stored in memory storage`);
+    console.log(`🔑 New API key ${newApiKey} stored in memory storage`);
     return customApiKey;
 };
 
@@ -472,7 +556,20 @@ app.get('/api/init-db', async (req, res) => {
         if (!db) {
             return res.json({
                 success: false,
-                message: 'Firebase not connected, using memory storage'
+                message: 'Firebase not connected, using memory storage',
+                troubleshooting: {
+                    hasConfig: !!(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL),
+                    projectId: process.env.FIREBASE_PROJECT_ID,
+                    steps: [
+                        '1. Go to https://console.firebase.google.com/',
+                        '2. Create a new project or select existing project "cloudidada"',
+                        '3. Go to Firestore Database and click "Create database"',
+                        '4. Choose "Start in test mode" for now',
+                        '5. Select a location (any location is fine)',
+                        '6. Go to Project Settings > Service Accounts',
+                        '7. Generate new private key if needed'
+                    ]
+                }
             });
         }
 
@@ -495,7 +592,15 @@ app.get('/api/init-db', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Database initialization failed',
-            error: error.message
+            error: error.message,
+            troubleshooting: {
+                errorCode: error.code,
+                possibleCauses: error.code === 5 ? [
+                    'Firestore database not enabled in Firebase project',
+                    'Project ID mismatch in environment variables',
+                    'Service account permissions insufficient'
+                ] : ['Unknown error - check Firebase console']
+            }
         });
     }
 });
@@ -558,15 +663,24 @@ app.post('/api/auth/register', async (req, res) => {
         };
 
         console.log('💾 Storing user data...');
+        // Always store in memory first
         memoryStorage.users.set(userId, userData);
         memoryStorage.apiKeys.set(apiKey, userData);
+        console.log('✅ User data stored in memory');
 
+        // Try Firebase only if available
         if (db) {
             try {
                 await db.collection('users').doc(userId).set(userData);
                 console.log('👤 User stored in Firebase');
             } catch (error) {
                 console.error('⚠️ Firebase save failed (using memory fallback):', error.message);
+                // Disable Firebase if it's consistently failing
+                if (error.code === 5) {
+                    console.log('🔴 Disabling Firebase due to NOT_FOUND errors');
+                    db = null;
+                    firebase = null;
+                }
             }
         }
 
@@ -624,17 +738,25 @@ app.post('/api/auth/login', async (req, res) => {
             }
         }
 
-        // Check Firebase if not found in memory
+        // Check Firebase if not found in memory and Firebase is available
         if (!userData && db) {
             try {
                 const snapshot = await db.collection('users').where('email', '==', email).get();
                 if (!snapshot.empty) {
                     userData = snapshot.docs[0].data();
+                    // Cache in memory for faster access
                     memoryStorage.users.set(userData.userId, userData);
                     memoryStorage.apiKeys.set(userData.apiKey, userData);
+                    console.log('✅ User found in Firebase and cached');
                 }
             } catch (error) {
-                console.error('Error fetching user from Firebase:', error);
+                console.error('⚠️ Firebase user lookup failed:', error.message);
+                // Disable Firebase if it's consistently failing
+                if (error.code === 5) {
+                    console.log('🔴 Disabling Firebase due to NOT_FOUND errors');
+                    db = null;
+                    firebase = null;
+                }
             }
         }
 
@@ -1056,7 +1178,7 @@ const startServer = async () => {
 ==========================================
 🎯 Production Ready!
    Files → Direct Cloudinary Storage
-   Data → Firebase Firestore
+   Data → Firebase/Memory Storage
    Updates → Real-time WebSocket
 ==========================================`);
         });
